@@ -9,23 +9,46 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Node;
 import org.jsoup.nodes.TextNode;
-import org.jsoup.select.NodeVisitor;
 import org.jsoup.nodes.Entities;
+import org.jsoup.select.NodeVisitor;
 
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 public class EpubProcessor {
 
     private int totalElementsInBook = 0;
     private int currentElementProgress = 0;
+    private int lastPrintedPercent = -1;
 
-    // Разделитель, который Google скорее всего не переведет и не удалит
     private static final String DELIMITER = " ||| ";
-    private static final int BATCH_SIZE_LIMIT = 1800; // Символов в одном запросе (безопасный лимит)
+    private static final int BATCH_SIZE_LIMIT = 1800;
+
+    // СЛОВАРЬ ИСПРАВЛЕНИЙ (Только универсальные и грубые ошибки)
+    private static final Map<String, String> CORRECTIONS = new LinkedHashMap<>();
+    static {
+        // --- 1. ИМЕНА СОБСТВЕННЫЕ ---
+        CORRECTIONS.put("австралиец", "Осси");
+        CORRECTIONS.put("Австралиец", "Осси");
+        CORRECTIONS.put("VIX", "Викс");
+        CORRECTIONS.put("Vix", "Викс");
+
+        // --- 2. ЖАНРОВЫЕ ТЕРМИНЫ ---
+        // Исправляем "subwoofer" -> "sub"
+        CORRECTIONS.put("сабвуфер", "саб");
+        CORRECTIONS.put("Сабвуфер", "Саб");
+        CORRECTIONS.put("сабвуфера", "саба");
+        CORRECTIONS.put("сабвуферу", "сабу");
+        CORRECTIONS.put("сабвуфером", "сабом");
+        CORRECTIONS.put("сабвуфере", "сабе");
+
+        // --- ГЕНДЕРНЫЕ ИСПРАВЛЕНИЯ УБРАНЫ (Чтобы книга была универсальной) ---
+    }
 
     public void process(String inputPath, String outputPath, TranslateService service) {
         try (FileInputStream fis = new FileInputStream(inputPath)) {
@@ -34,8 +57,10 @@ public class EpubProcessor {
             List<Resource> contents = book.getContents();
 
             totalElementsInBook = countTotalElements(contents);
-            System.out.println("Найдено фрагментов: " + totalElementsInBook);
-            System.out.println("--- Старт быстрого перевода ---");
+            System.out.println("Найдено фрагментов текста: " + totalElementsInBook);
+            System.out.println("--- Старт перевода (Универсальный режим) ---");
+
+            drawProgressBar(0, totalElementsInBook);
 
             for (Resource resource : contents) {
                 if (isHtml(resource)) {
@@ -46,6 +71,7 @@ public class EpubProcessor {
             try (FileOutputStream fos = new FileOutputStream(outputPath)) {
                 new EpubWriter().write(book, fos);
             }
+
             drawProgressBar(totalElementsInBook, totalElementsInBook);
             System.out.println("\n✅ Готово! Книга сохранена.");
 
@@ -55,8 +81,8 @@ public class EpubProcessor {
     }
 
     private boolean isHtml(Resource resource) {
-        return resource.getMediaType().getName().contains("html") ||
-                resource.getMediaType().getName().contains("xml");
+        String name = resource.getMediaType().getName().toLowerCase();
+        return name.contains("html") || name.contains("xml");
     }
 
     private int countTotalElements(List<Resource> contents) {
@@ -66,7 +92,6 @@ public class EpubProcessor {
                 if (isHtml(resource)) {
                     String html = new String(resource.getData(), resource.getInputEncoding());
                     Document doc = Jsoup.parse(html);
-                    // Считаем текстовые узлы
                     final int[] localCount = {0};
                     doc.traverse(new NodeVisitor() {
                         public void head(Node node, int depth) {
@@ -91,12 +116,12 @@ public class EpubProcessor {
             String html = new String(resource.getData(), encoding);
             Document doc = Jsoup.parse(html);
 
+            // ВАЖНО: prettyPrint(false) сохраняет оригинальные шрифты и верстку
             doc.outputSettings()
                     .syntax(Document.OutputSettings.Syntax.xml)
                     .escapeMode(Entities.EscapeMode.xhtml)
-                    .prettyPrint(true);
+                    .prettyPrint(false);
 
-            // 1. СОБИРАЕМ ВСЕ ТЕКСТОВЫЕ УЗЛЫ В СПИСОК
             List<TextNode> nodesToTranslate = new ArrayList<>();
             doc.traverse(new NodeVisitor() {
                 @Override
@@ -112,18 +137,14 @@ public class EpubProcessor {
                 public void tail(Node node, int depth) {}
             });
 
-            // 2. ОБРАБАТЫВАЕМ ИХ ПАЧКАМИ (BATCHING)
             StringBuilder batchText = new StringBuilder();
             List<TextNode> currentBatchNodes = new ArrayList<>();
 
             for (TextNode node : nodesToTranslate) {
                 String text = node.text();
 
-                // Если добавление этого текста превысит лимит - отправляем текущую пачку
                 if (batchText.length() + text.length() + DELIMITER.length() > BATCH_SIZE_LIMIT) {
                     processBatch(batchText, currentBatchNodes, service);
-
-                    // Очищаем для новой пачки
                     batchText.setLength(0);
                     currentBatchNodes.clear();
                 }
@@ -135,7 +156,6 @@ public class EpubProcessor {
                 currentBatchNodes.add(node);
             }
 
-            // Обрабатываем остатки
             if (!currentBatchNodes.isEmpty()) {
                 processBatch(batchText, currentBatchNodes, service);
             }
@@ -153,44 +173,62 @@ public class EpubProcessor {
         String originalBigString = batchText.toString();
         String translatedBigString = service.translate(originalBigString);
 
-        // Разбиваем полученный перевод обратно по разделителю
-        // Используем Pattern.quote, чтобы спецсимволы в разделителе не ломали regex
+        if (translatedBigString == null) translatedBigString = originalBigString;
+
+        // Применяем словарь (только имена и термины)
+        translatedBigString = applyCorrections(translatedBigString);
+
         String[] parts = translatedBigString.split(Pattern.quote(DELIMITER.trim()));
 
-        // ПРОВЕРКА БЕЗОПАСНОСТИ:
-        // Если количество кусков совпадает, всё супер.
-        // Если нет (Google съел разделитель), мы переводим эти узлы по отдельности (медленно, но надежно)
         if (parts.length == nodes.size()) {
             for (int i = 0; i < nodes.size(); i++) {
-                nodes.get(i).text(parts[i].trim());
+                String translatedPart = parts[i];
+                // Сохраняем пробелы по краям
+                if (nodes.get(i).text().startsWith(" ") && !translatedPart.startsWith(" ")) {
+                    translatedPart = " " + translatedPart;
+                }
+                nodes.get(i).text(translatedPart);
                 updateProgress();
             }
         } else {
-            // FALLBACK: Если пачка сломалась, переводим по одному
-            // System.out.println("⚠ Пачка рассыпалась, переводим поштучно...");
+            // Фолбэк по одному (на случай сбоя разделителя)
             for (TextNode node : nodes) {
                 String singleTrans = service.translate(node.text());
+                singleTrans = applyCorrections(singleTrans);
+                if (node.text().startsWith(" ") && !singleTrans.startsWith(" ")) {
+                    singleTrans = " " + singleTrans;
+                }
                 node.text(singleTrans);
                 updateProgress();
             }
         }
     }
 
+    private String applyCorrections(String text) {
+        String result = text;
+        for (Map.Entry<String, String> entry : CORRECTIONS.entrySet()) {
+            result = result.replace(entry.getKey(), entry.getValue());
+        }
+        return result;
+    }
+
     private void updateProgress() {
         currentElementProgress++;
-        // Обновляем полоску реже, чтобы не тормозить консоль
-        if (currentElementProgress % 10 == 0 || currentElementProgress == totalElementsInBook) {
+        int percent = (int) ((double) currentElementProgress / totalElementsInBook * 100);
+        if (percent > lastPrintedPercent) {
             drawProgressBar(currentElementProgress, totalElementsInBook);
+            lastPrintedPercent = percent;
         }
     }
 
     private void drawProgressBar(int current, int total) {
-        int width = 40;
+        int width = 30;
         double percent = (double) current / total;
         if (percent > 1.0) percent = 1.0;
         int filled = (int) (percent * width);
 
-        StringBuilder bar = new StringBuilder("\r[");
+        StringBuilder bar = new StringBuilder();
+        bar.append("\r[");
         for (int i = 0; i < width; i++) {
             if (i < filled) bar.append("=");
             else bar.append(" ");
