@@ -1,5 +1,5 @@
 # 📚 EPUB Auto-Translator (Java)
-
+>Старая версия использует Google api, новая используеи ии доступна для загрузки.[Инструкции по установке ИИ версии](README2.mdd)
 ![Java](https://img.shields.io/badge/Java-17%2B-orange)
 ![Maven](https://img.shields.io/badge/Maven-3.x-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
