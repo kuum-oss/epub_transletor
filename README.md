@@ -54,17 +54,7 @@
 2. **Не торопитесь.** В коде специально прописаны задержки (`Thread.sleep`). Не уменьшайте их, если не уверены в своем IP.
 
 3. **Динамический IP.** Если у вас нет VPN, часто помогает перезагрузка роутера для смены IP-адреса.
-
----
-# 📚 EPUB Auto-Translator (Java)
-
-![Java](https://img.shields.io/badge/Java-17%2B-orange)
-![Maven](https://img.shields.io/badge/Maven-3.x-blue)
-![License](https://img.shields.io/badge/License-MIT-green)
-![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
-
-**Short description:** Quick EPUB translator preserving structure and formatting, with customizable correction map.
-
+4. 
 ---
 
 ## 🔍 IP Check Utility
