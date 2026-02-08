@@ -2,100 +2,71 @@ package com.translator.service;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
-
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-import java.util.concurrent.ThreadLocalRandom;
+import com.google.gson.JsonObject;
+import okhttp3.*;
+import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 
 public class TranslateService {
-
     private final OkHttpClient client;
     private final Gson gson;
-    // URL API
-    private static final String API_URL = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ru&dt=t&q=";
+    private static final String OLLAMA_URL = "http://127.0.0.1:11434/api/chat";
 
     public TranslateService() {
-        // Таймауты увеличены для VPN и медленного интернета
         this.client = new OkHttpClient.Builder()
-                .connectTimeout(20, TimeUnit.SECONDS)
-                .readTimeout(40, TimeUnit.SECONDS)
-                .retryOnConnectionFailure(true)
+                .connectTimeout(60, TimeUnit.SECONDS)
+                .writeTimeout(120, TimeUnit.SECONDS)
+                .readTimeout(900, TimeUnit.SECONDS) // 15 минут для 8к символов
                 .build();
         this.gson = new Gson();
     }
 
-    /**
-     * Пытается перевести текст 3 раза перед тем как сдаться.
-     * Обрабатывает 429 ошибку (Too Many Requests).
-     */
-    public String translateWithRetry(String text) {
-        int maxRetries = 3;
-
-        for (int i = 0; i < maxRetries; i++) {
-            String result = translate(text);
-
-            // Если успех
-            if (result != null) {
-                return result;
-            }
-
-            // Если неудача, ждем перед следующей попыткой
-            if (i < maxRetries - 1) {
-                long waitTime = 2000 * (i + 1); // 2сек, 4сек...
-                System.out.print(" (R" + (i+1) + ") "); // Индикатор повтора в логе
-                try {
-                    Thread.sleep(waitTime);
-                } catch (InterruptedException ignored) {}
-            }
-        }
-        return text; // Возвращаем оригинал, если ничего не помогло
-    }
-
-    // Базовый метод перевода (Теперь public, чтобы тесты не ругались)
-    public String translate(String text) {
+    public String translateBatch(String text) {
         if (text == null || text.trim().isEmpty()) return text;
 
-        try {
-            // Случайная пауза 100-300мс (имитация человека)
-            Thread.sleep(ThreadLocalRandom.current().nextInt(100, 300));
+        JsonObject requestJson = new JsonObject();
+        requestJson.addProperty("model", "llama3");
+        requestJson.addProperty("stream", false);
 
-            String encodedText = URLEncoder.encode(text, StandardCharsets.UTF_8);
-            Request request = new Request.Builder()
-                    .url(API_URL + encodedText)
-                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                    .build();
+        JsonArray messages = new JsonArray();
+        JsonObject systemMessage = new JsonObject();
+        systemMessage.addProperty("role", "system");
+        systemMessage.addProperty("content",
+                "You are an expert literary translator. Translate the provided book text into Russian.\n" +
+                        "CRITICAL RULES:\n" +
+                        "1. Preserve the separator '[[[...]]]' exactly. It MUST be in the output.\n" +
+                        "2. NO explanations, NO introductory text like 'Here is the translation'.\n" +
+                        "3. Use professional, novel-style Russian.\n" +
+                        "4. Maintain paragraph breaks.");
+        messages.add(systemMessage);
 
-            try (Response response = client.newCall(request).execute()) {
-                if (response.isSuccessful() && response.body() != null) {
-                    return parseGoogleResponse(response.body().string());
-                } else if (response.code() == 429) {
-                    System.err.println("⚠️ Google Rate Limit (429).");
-                    return null; // Вернет null -> сработает Retry
-                } else {
-                    System.err.println("Ошибка HTTP: " + response.code());
+        JsonObject userMessage = new JsonObject();
+        userMessage.addProperty("role", "user");
+        userMessage.addProperty("content", text);
+        messages.add(userMessage);
+
+        requestJson.add("messages", messages);
+
+        RequestBody body = RequestBody.create(
+                requestJson.toString(), MediaType.get("application/json; charset=utf-8"));
+
+        Request request = new Request.Builder().url(OLLAMA_URL).post(body).build();
+
+        try (Response response = client.newCall(request).execute()) {
+            if (response.isSuccessful() && response.body() != null) {
+                String respBody = response.body().string();
+                JsonObject jsonResponse = gson.fromJson(respBody, JsonObject.class);
+                String content = jsonResponse.getAsJsonObject("message").get("content").getAsString().trim();
+
+                // Очистка от возможного мусора ИИ в начале
+                if (content.toLowerCase().contains("here is") && content.contains("[[[...]]]")) {
+                    content = content.substring(content.indexOf("[[[...]]]"));
                 }
+                return content;
             }
-        } catch (Exception e) {
-            System.err.println("Ошибка сети: " + e.getMessage());
+        } catch (IOException e) {
+            System.err.println("Ошибка Ollama: " + e.getMessage());
         }
         return null;
-    }
-
-    private String parseGoogleResponse(String jsonResponse) {
-        try {
-            StringBuilder result = new StringBuilder();
-            JsonArray rootArray = gson.fromJson(jsonResponse, JsonArray.class);
-            JsonArray sentences = rootArray.get(0).getAsJsonArray();
-            for (int i = 0; i < sentences.size(); i++) {
-                result.append(sentences.get(i).getAsJsonArray().get(0).getAsString());
-            }
-            return result.toString();
-        } catch (Exception e) {
-            return null;
-        }
     }
 }
