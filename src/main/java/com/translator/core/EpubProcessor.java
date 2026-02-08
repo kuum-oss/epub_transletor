@@ -39,17 +39,63 @@ public class EpubProcessor {
     private final Map<Resource, byte[]> translatedResourcesCache = new ConcurrentHashMap<>();
 
     private static final Map<String, String> CORRECTIONS = new LinkedHashMap<>();
+
     static {
-        CORRECTIONS.put("австралиец", "Осси");
-        CORRECTIONS.put("Австралиец", "Осси");
-        CORRECTIONS.put("VIX", "Викс");
-        CORRECTIONS.put("Vix", "Викс");
-        CORRECTIONS.put("сабвуфер", "саб");
-        CORRECTIONS.put("Сабвуфер", "Саб");
-        CORRECTIONS.put("сабвуфера", "саба");
-        CORRECTIONS.put("сабвуферу", "сабу");
-        CORRECTIONS.put("сабвуфером", "сабом");
-        CORRECTIONS.put("сабвуфере", "сабе");
+        // =====================
+        // ПЕРСОНАЖИ
+        // =====================
+
+        // Vane (GT: флюгер / лопасть)
+        CORRECTIONS.put("Флюгер", "Вейн");
+        CORRECTIONS.put("Флюгера", "Вейна");
+        CORRECTIONS.put("Флюгеру", "Вейну");
+        CORRECTIONS.put("Флюгером", "Вейном");
+        CORRECTIONS.put("Флюгере", "Вейне");
+        CORRECTIONS.put("лопасть", "Вейн"); // редко, но встречается
+
+        // Bash (GT: удар, вечеринка)
+        CORRECTIONS.put("Удар", "Баш");
+        CORRECTIONS.put("Удара", "Баша");
+        CORRECTIONS.put("Удару", "Башу");
+        CORRECTIONS.put("Ударом", "Башем");
+        CORRECTIONS.put("Ударе", "Баше");
+        CORRECTIONS.put("Баши", "Баш"); // множественное искажение
+
+        // Kas (GT: касса)
+        CORRECTIONS.put("Касса", "Кас");
+        CORRECTIONS.put("Кассы", "Каса");
+        CORRECTIONS.put("Кассе", "Касе");
+
+        // Darling (фамилия)
+        CORRECTIONS.put("Дорогая", "Дарлинг");
+        CORRECTIONS.put("Милая", "Дарлинг");
+        CORRECTIONS.put("Любимая", "Дарлинг");
+
+        // Pan
+        CORRECTIONS.put("Кастрюля", "Пэн");
+        CORRECTIONS.put("Сковорода", "Пэн");
+        CORRECTIONS.put("Пан", "Пэн");
+        CORRECTIONS.put("Пана", "Пэна");
+
+        // =====================
+        // ТЕРМИНЫ МИРА
+        // =====================
+
+        // Fae → фейри (НЕ склоняется)
+        CORRECTIONS.put("Фея", "Фейри");
+        CORRECTIONS.put("Феи", "Фейри");
+        CORRECTIONS.put("Феям", "Фейри");
+        CORRECTIONS.put("Феями", "Фейри");
+
+        // Neverland
+        CORRECTIONS.put("Нетландия", "Неверленд");
+        CORRECTIONS.put("Нетландии", "Неверленда");
+        CORRECTIONS.put("Нетландию", "Неверленд");
+        CORRECTIONS.put("Нетландией", "Неверлендом");
+
+        // Shadow (персонаж/сущность, только с заглавной)
+        CORRECTIONS.put("Тень", "Тень");
+        CORRECTIONS.put("Тени", "Тени");
     }
 
     public void process(String inputPath, String outputPath, TranslateService service) {

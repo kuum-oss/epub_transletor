@@ -21,7 +21,7 @@ public class Main extends JFrame {
     private JLabel statusLabel;
 
     public Main() {
-        setTitle("EPUB Translator (AI)");
+        setTitle("EPUB Translator (Google)");
         setSize(700, 500);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
