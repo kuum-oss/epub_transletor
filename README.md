@@ -56,6 +56,35 @@
 3. **Динамический IP.** Если у вас нет VPN, часто помогает перезагрузка роутера для смены IP-адреса.
 
 ---
+# 📚 EPUB Auto-Translator (Java)
+
+![Java](https://img.shields.io/badge/Java-17%2B-orange)
+![Maven](https://img.shields.io/badge/Maven-3.x-blue)
+![License](https://img.shields.io/badge/License-MIT-green)
+![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
+
+**Short description:** Quick EPUB translator preserving structure and formatting, with customizable correction map.
+
+---
+
+## 🔍 IP Check Utility
+
+В проекте уже есть тестовый класс `CheckBan` в папке с тестами (`src/test/java/com/translator/CheckBan.java`). Он позволяет проверить статус вашего IP перед переводом:
+
+* Проверяет доступность Google Translate.
+* Показывает коды ответа (200, 403, 429 и другие).
+* Подсказывает действия при троттлинге или блокировке.
+
+Использование:
+
+```bash
+# Запуск теста через Maven
+mvn test -Dtest=com.translator.CheckBan
+```
+
+Или прямо из IDE: запустите класс `CheckBan` в тестовой папке.
+
+---
 
 ## 🛠️ Настройка перевода (Словарь замен)
 
